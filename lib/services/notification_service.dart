@@ -270,6 +270,8 @@ class NotificationService {
         presentAlert: true,
         presentBadge: true,
         presentSound: true,
+        interruptionLevel: InterruptionLevel.timeSensitive,
+
       );
 
       const NotificationDetails platformChannelSpecifics = NotificationDetails(

@@ -779,13 +779,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                         color: AppColors.textSecondary,
                       ),
                     ),
+                    /*
                     const SizedBox(height: 24),
                     _buildTimeOption(
                       minutes: 1,
                       selected: selectedMinutes == 1,
                       onTap: () => setState(() => selectedMinutes = 1),
                       label: '1 minuto (TEST)',
-                    ),
+                    ),*/
                     const SizedBox(height: 12),
                     _buildTimeOption(
                       minutes: 30,
@@ -984,7 +985,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
               child: _buildInfoCard(
                 title: 'Cambio',
                 value: '$daysToSwitch',
-                subtitle: 'giorni',
+                subtitle: 'giorni rimanenti',
                 isSmallScreen: isSmallScreen,
                 isWarning: daysToSwitch == 0,
               ),

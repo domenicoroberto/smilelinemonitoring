@@ -62,8 +62,9 @@ void callbackDispatcher() {
 
         try {
           await notificationService.sendInstantReminder(
-            title: '🦷 Ricordati gli allineatori!',
-            body: 'È ora di rimettere i tuoi allineatori',
+              title: '🦷 SmileLine Reminder',
+              body: 'Tempo scaduto! ⏰ \n '
+                  'È ora di indossare i tuoi allineatori!'
           );
           print('✅ Notifica reminder inviata con successo');
         } catch (e) {

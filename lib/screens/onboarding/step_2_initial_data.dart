@@ -22,6 +22,8 @@ class _Step2InitialDataState extends State<Step2InitialData> {
   DateTime selectedDate = DateTime.now();
   String userName = '';
   String? notes;
+  bool treatmentStartsTodayFlag = true;  // ✅ FLAG: verifica se inizia oggi
+  bool treatmentAlreadyStarted = false;  // ✅ FLAG: se il trattamento è già iniziato
 
   @override
   void initState() {
@@ -31,6 +33,9 @@ class _Step2InitialDataState extends State<Step2InitialData> {
       text: DateFormat('dd/MM/yyyy').format(selectedDate),
     );
     _notesController = TextEditingController();
+
+    // ✅ Imposta il flag correttamente al caricamento
+    _updateTreatmentStartsFlag();
   }
 
   @override
@@ -46,14 +51,99 @@ class _Step2InitialDataState extends State<Step2InitialData> {
       'userName': userName,
       'startDate': selectedDate,
       'notes': notes,
+      'treatmentStartsToday': treatmentStartsTodayFlag,  // ✅ Aggiungi il flag
+      'treatmentAlreadyStarted': treatmentAlreadyStarted,  // ✅ Aggiungi il flag
     });
+  }
+
+  /// ✅ VERIFICA SE IL TRATTAMENTO INIZIA OGGI
+  void _updateTreatmentStartsFlag() {
+    final today = DateTime.now();
+    final selectedDay = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+    final todayDay = DateTime(today.year, today.month, today.day);
+
+    setState(() {
+      treatmentStartsTodayFlag = selectedDay.isAtSameMomentAs(todayDay);
+    });
+
+    print('📅 Verifica data:');
+    print('   Data selezionata: ${DateFormat('dd/MM/yyyy').format(selectedDate)}');
+    print('   Oggi: ${DateFormat('dd/MM/yyyy').format(today)}');
+    print('   Inizia oggi: $treatmentStartsTodayFlag');
+    print('   Già iniziato: $treatmentAlreadyStarted');
+
+    // ✅ Mostra avviso se non inizia oggi
+    _showTreatmentStartsWarning();
+  }
+
+  /// ✅ MOSTRA AVVISO SE IL TRATTAMENTO NON INIZIA OGGI O SE È GIÀ INIZIATO
+  void _showTreatmentStartsWarning() {
+    if (treatmentAlreadyStarted) {
+      // ⚠️ Alert per "Già iniziato"
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'La progressione del trattamento sarà tracciata a partire da oggi',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 5),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      });
+    } else if (!treatmentStartsTodayFlag) {
+      // ℹ️ Alert per data nel passato ma non "già iniziato"
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.info_outline, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '⚠️ Data selezionata nel passato - Il conteggio inizierà da oggi',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: AppColors.overlap,
+            duration: const Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      });
+    }
   }
 
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: selectedDate,
-      firstDate: DateTime.now(),
+      firstDate: DateTime.now().subtract(const Duration(days: 30)),  // ✅ Ultimi 30 giorni
       lastDate: DateTime.now().add(const Duration(days: 365)),
       builder: (context, child) {
         return Theme(
@@ -75,6 +165,8 @@ class _Step2InitialDataState extends State<Step2InitialData> {
         selectedDate = picked;
         _dateController.text = DateFormat('dd/MM/yyyy').format(picked);
       });
+      // ✅ Aggiorna il flag quando la data cambia
+      _updateTreatmentStartsFlag();
       _notifyChanges();
     }
   }
@@ -110,13 +202,15 @@ class _Step2InitialDataState extends State<Step2InitialData> {
           ),
           SizedBox(height: isSmallScreen ? 16 : 20),
 
-          _buildDateField(
+          _buildReadOnlyDateField(
             label: 'Data di Inizio',
-            hint: 'Seleziona una data',
             controller: _dateController,
-            onTap: () => _selectDate(context),
             isSmallScreen: isSmallScreen,
           ),
+          SizedBox(height: isSmallScreen ? 16 : 20),
+
+          // ✅ NUOVO: Toggle per "Già iniziato"
+          _buildTreatmentAlreadyStartedToggle(isSmallScreen),
           SizedBox(height: isSmallScreen ? 16 : 20),
 
           _buildTextAreaField(
@@ -135,6 +229,67 @@ class _Step2InitialDataState extends State<Step2InitialData> {
 
           _buildInfoCard(isSmallScreen),
           SizedBox(height: isSmallScreen ? 16 : 32),
+        ],
+      ),
+    );
+  }
+
+  /// ✅ WIDGET: Toggle per "Già iniziato"
+  Widget _buildTreatmentAlreadyStartedToggle(bool isSmallScreen) {
+    return Container(
+      padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+      decoration: BoxDecoration(
+        color: treatmentAlreadyStarted
+            ? AppColors.error.withOpacity(0.1)
+            : Colors.transparent,
+        border: Border.all(
+          color: treatmentAlreadyStarted
+              ? AppColors.error.withOpacity(0.3)
+              : AppColors.border,
+          width: treatmentAlreadyStarted ? 1.5 : 1,
+        ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Il trattamento è già iniziato?',
+                  style: TextStyle(
+                    fontSize: isSmallScreen ? 13 : 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.graphite,
+                  ),
+                ),
+                SizedBox(height: isSmallScreen ? 4 : 6),
+                Text(
+                  'Seleziona se il trattamento è già in corso',
+                  style: TextStyle(
+                    fontSize: isSmallScreen ? 11 : 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: isSmallScreen ? 12 : 16),
+          Switch(
+            value: treatmentAlreadyStarted,
+            onChanged: (value) {
+              setState(() {
+                treatmentAlreadyStarted = value;
+              });
+              _updateTreatmentStartsFlag();
+              _notifyChanges();
+            },
+            activeColor: AppColors.error,
+            activeTrackColor: AppColors.error.withOpacity(0.3),
+            inactiveThumbColor: AppColors.textHint,
+            inactiveTrackColor: AppColors.border,
+          ),
         ],
       ),
     );
@@ -239,6 +394,57 @@ class _Step2InitialDataState extends State<Step2InitialData> {
             ),
           ),
           style: TextStyle(fontSize: isSmallScreen ? 14 : 16),
+        ),
+      ],
+    );
+  }
+
+  /// ✅ WIDGET: Data in sola lettura (non modificabile)
+  Widget _buildReadOnlyDateField({
+    required String label,
+    required TextEditingController controller,
+    required bool isSmallScreen,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: isSmallScreen ? 12 : 14,
+            fontWeight: FontWeight.w600,
+            color: AppColors.graphite,
+          ),
+        ),
+        SizedBox(height: isSmallScreen ? 6 : 8),
+        Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: isSmallScreen ? 10 : 12,
+          ),
+          decoration: BoxDecoration(
+            color: AppColors.textHint.withOpacity(0.05),
+            border: Border.all(color: AppColors.border),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.calendar_today,
+                color: AppColors.blue,
+                size: isSmallScreen ? 16 : 20,
+              ),
+              SizedBox(width: isSmallScreen ? 10 : 12),
+              Text(
+                controller.text,
+                style: TextStyle(
+                  fontSize: isSmallScreen ? 14 : 16,
+                  color: AppColors.graphite,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );

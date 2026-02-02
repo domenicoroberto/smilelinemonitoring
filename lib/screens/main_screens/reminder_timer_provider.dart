@@ -3,7 +3,6 @@ import 'dart:async';
 import '../../services/notification_service.dart';
 import '../../services/background_timer_service.dart';
 
-
 // Stato del reminder timer
 class ReminderTimerState {
   final int remainingSeconds;
@@ -30,9 +29,16 @@ class ReminderTimerState {
 
 // Notifier per il reminder timer
 class ReminderTimerNotifier extends StateNotifier<ReminderTimerState> {
-  Timer? _timer;
+  // ✅ NON usiamo Timer.periodic() - lasciamo che BackgroundTimerService lo faccia!
+  // Usiamo solo un Timer per aggiornare la UI ogni secondo
+  Timer? _uiUpdateTimer;
+
   final NotificationService _notificationService = NotificationService();
   final BackgroundTimerService _backgroundTimerService = BackgroundTimerService();
+
+  int _totalSecondsSet = 0;  // ✅ Traccia la durata totale
+  DateTime? _reminderStartTime;  // ✅ Quando è stato avviato
+  bool _wasRunning = false;  // ✅ Era running prima della pausa
 
   ReminderTimerNotifier()
       : super(ReminderTimerState(
@@ -58,57 +64,38 @@ class ReminderTimerNotifier extends StateNotifier<ReminderTimerState> {
 
       print('🔄 SYNC REMINDER FROM BACKGROUND: $minutesRemaining minuti rimanenti');
 
-      // ✅ Riavvia il countdown con i minuti rimanenti
       final totalSeconds = minutesRemaining * 60;
+      _totalSecondsSet = totalSeconds;
+      _reminderStartTime = DateTime.now();
+
       state = ReminderTimerState(
         remainingSeconds: totalSeconds,
         isActive: true,
         totalSeconds: totalSeconds,
       );
 
-      // ✅ Riavvia il timer tick
-      _startTimerTick();
+      // ✅ Avvia l'aggiornamento UI ogni secondo
+      _startUIUpdate();
 
-      print('✅ Reminder sincronizzato e riavviato');
+      print('✅ Reminder sincronizzato');
     } catch (e) {
-      print('❌ Errore nella sincronizzazione reminder: $e');
+      print('❌ Errore sincronizzazione reminder: $e');
     }
   }
 
-  /// ✅ NUOVO: Avvia il timer tick separato
-  void _startTimerTick() {
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (state.remainingSeconds > 0) {
-        state = ReminderTimerState(
-          remainingSeconds: state.remainingSeconds - 1,
-          isActive: true,
-          totalSeconds: state.totalSeconds,
-        );
-      } else {
-        // Timer finito - invia notifica
-        print('⏰ Timer scaduto! Invio notifica...');
-        _onTimerComplete();
-        timer.cancel();
-      }
-    });
-  }
-
-  /// ✅ Avvia il countdown timer
+  /// ✅ CRITICO: Avvia il reminder
+  /// NON usiamo Timer.periodic() per il timer!
+  /// Usiamo BackgroundTimerService che lo gestisce
   Future<void> startCountdown(int minutes) async {
-    // Cancella timer precedente se esiste
-    _timer?.cancel();
+    print('\n' + '='*70);
+    print('📍 AVVIO COUNTDOWN REMINDER: $minutes minuti');
+    print('='*70);
 
     final totalSeconds = minutes * 60;
-    state = ReminderTimerState(
-      remainingSeconds: totalSeconds,
-      isActive: true,
-      totalSeconds: totalSeconds,
-    );
+    _totalSecondsSet = totalSeconds;
+    _reminderStartTime = DateTime.now();  // ✅ SALVA L'ORA DI INIZIO
 
-    print('⏱️ Timer reminder avviato: $minutes minuti ($totalSeconds secondi)');
-
-    // ✅ NUOVO: Salva il reminder nel background
+    // ✅ Salva nel background
     try {
       await _backgroundTimerService.initialize();
       await _backgroundTimerService.saveReminderState(
@@ -117,68 +104,160 @@ class ReminderTimerNotifier extends StateNotifier<ReminderTimerState> {
       );
       print('✅ Reminder salvato nel background');
     } catch (e) {
-      print('❌ Errore nel salvataggio reminder nel background: $e');
+      print('❌ Errore salvataggio: $e');
+      return;
     }
 
-    // ✅ Usa il metodo centralizzato per avviare il tick
-    _startTimerTick();
-  }
-
-  /// Quando il timer finisce
-  Future<void> _onTimerComplete() async {
+    // ✅ ORA aggiorna state
     state = ReminderTimerState(
-      remainingSeconds: 0,
-      isActive: false,
-      totalSeconds: state.totalSeconds,
+      remainingSeconds: totalSeconds,
+      isActive: true,
+      totalSeconds: totalSeconds,
     );
 
-    // ✅ Disattiva il reminder nel background
+    print('⏱️ Timer reminder avviato: $minutes minuti');
+
+    // ✅ Avvia l'aggiornamento della UI ogni secondo
+    _startUIUpdate();
+
+    print('='*70 + '\n');
+  }
+
+  void _startUIUpdate() {
+    _uiUpdateTimer?.cancel();
+
+    print('🎬 Inizio aggiornamento UI ogni secondo');
+
+    _uiUpdateTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      try {
+        // ✅ NON LEGGERE DAL BACKGROUND!
+        // Calcola direttamente da _reminderStartTime che è l'ora di inizio
+
+        if (_reminderStartTime == null) {
+          timer.cancel();
+          return;
+        }
+
+        final now = DateTime.now();
+        final elapsedSeconds = now.difference(_reminderStartTime!).inSeconds;
+        final remainingSeconds = _totalSecondsSet - elapsedSeconds;
+
+        // ✅ Se scaduto
+        if (remainingSeconds <= 0) {
+          print('⏰⏰⏰ REMINDER SCADUTO!');
+          timer.cancel();
+          _uiUpdateTimer = null;
+
+          state = ReminderTimerState(
+            remainingSeconds: 0,
+            isActive: false,
+            totalSeconds: state.totalSeconds,
+          );
+
+          await _sendNotificationAndCleanup();
+          return;
+        }
+
+        // ✅ Aggiorna UI
+        state = ReminderTimerState(
+          remainingSeconds: remainingSeconds,
+          isActive: true,
+          totalSeconds: state.totalSeconds,
+        );
+
+        print('⏱️ Reminder UI update: ${remainingSeconds}s rimasti');
+
+      } catch (e) {
+        print('❌ Errore update UI: $e');
+        timer.cancel();
+        _uiUpdateTimer = null;
+      }
+    });
+  }
+
+  /// ✅ Quando il timer scade (CALLBACK CRITICA)
+  Future<void> _sendNotificationAndCleanup() async {
+    print('\n' + '='*70);
+    print('🔔 TIMER COMPLETATO - Notifica');
+    print('='*70);
+
+    // ✅ PRIMA: Invia notifica istantanea CORRETTA
     try {
-      await _backgroundTimerService.initialize();
+      print('📢 Invio notifica istantanea...');
+      await _notificationService.sendInstantReminder(
+        title: '🦷 SmileLine Reminder',
+        body: 'Tempo scaduto! ⏰\nÈ ora di indossare i tuoi allineatori!',
+      );
+      print('✅ Notifica inviata!');
+    } catch (e) {
+      print('❌ Errore notifica: $e');
+    }
+
+    // ✅ POI: Disattiva nel background
+    try {
       await _backgroundTimerService.saveReminderState(
         minutesRemaining: 0,
         isActive: false,
       );
       print('✅ Reminder disattivato nel background');
     } catch (e) {
-      print('❌ Errore nel disattivare reminder dal background: $e');
+      print('❌ Errore disattivazione: $e');
     }
 
-    // Invia notifica istantanea
-    _notificationService.sendInstantReminder(
-        title: '🦷 SmileLine Reminder',
-        body: 'Tempo scaduto! ⏰ \n '
-            'È ora di indossare i tuoi allineatori!'
-    );
+    print('='*70 + '\n');
   }
 
-  /// ✅ Cancella il timer
+  /// ✅ Cancella il countdown
   Future<void> cancelCountdown() async {
-    _timer?.cancel();
+    print('❌ CANCELLAZIONE REMINDER');
+
+    _uiUpdateTimer?.cancel();
+    _uiUpdateTimer = null;
+
     state = ReminderTimerState(
       remainingSeconds: 0,
       isActive: false,
       totalSeconds: 0,
     );
 
-    // ✅ Disattiva nel background
     try {
       await _backgroundTimerService.initialize();
       await _backgroundTimerService.saveReminderState(
         minutesRemaining: 0,
         isActive: false,
       );
-      print('✅ Reminder disattivato nel background');
+      print('✅ Reminder disattivato');
     } catch (e) {
-      print('❌ Errore nel disattivare: $e');
+      print('❌ Errore: $e');
     }
+  }
 
-    print('❌ Reminder cancellato');
+  /// ✅ NUOVO: Quando app va in pausa
+  /// Non serve fare niente - BackgroundTimerService continua!
+  Future<void> pauseReminder() async {
+    print('⏸️ APP PAUSED - Pausa timer UI');
+    _uiUpdateTimer?.cancel();
+    _uiUpdateTimer = null;
+    _wasRunning = state.isActive;
+    print('✅ UI timer pausato, BackgroundTimerService continua in background');
+  }
+
+  /// ✅ NUOVO: Quando app torna in foreground
+  /// Riprendi l'aggiornamento UI dal background
+  Future<void> resumeReminder() async {
+    print('▶️ APP RESUMED - Riprendi timer UI');
+
+    // ✅ Sincronizza con il valore attuale dal background
+    if (state.isActive) {
+      _startUIUpdate();
+      print('✅ UI timer riavviato, sincronizzato col background');
+    }
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    print('🗑️ Dispose ReminderTimerNotifier');
+    _uiUpdateTimer?.cancel();
     super.dispose();
   }
 }

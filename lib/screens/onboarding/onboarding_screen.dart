@@ -75,10 +75,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   void _goToNextStep() {
     // Controlla se step 1 è valido
-    if (upperAlignersCount == 0 || lowerAlignersCount == 0 || changeFrequency.isEmpty) {
+    // ✅ Accetta 0 in uno dei campi, ma almeno uno deve essere > 0
+    if ((upperAlignersCount == 0 && lowerAlignersCount == 0) || changeFrequency.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('⚠️ Compila tutti i campi per continuare'),
+          content: Text('⚠️ Almeno uno tra i due allineatori deve essere > 0'),
           backgroundColor: AppColors.error,
           duration: Duration(seconds: 2),
         ),
