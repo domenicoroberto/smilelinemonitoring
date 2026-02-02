@@ -2,7 +2,7 @@
     <application
         android:label="SmileLine Monitoring"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher_adaptive_fore">
+        android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -26,7 +26,7 @@ android {
         applicationId = "com.domenico_roberto.smileline_monitoring"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        versionCode = 4
+        versionCode = 5
         versionName = "1.0"
     }
 
