@@ -101,6 +101,10 @@ class SmartTimerSync {
       final closedDay = DateTime(closedAt.year, closedAt.month, closedAt.day);
       final nowDay = DateTime(now.year, now.month, now.day);
       final dayChanged = closedDay != nowDay;
+      if (dayChanged) {
+        final today = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+        await _prefs.setString('last_day_check', today);
+      }
 
       print('\n🌙 ANALISI GIORNO:');
       print('   - Giorno chiusura: ${closedDay.toIso8601String().split('T')[0]}');

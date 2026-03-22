@@ -7,6 +7,7 @@ import '../../models/user.dart';
 import '../../providers/app_state_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../providers/treatment_provider.dart';
+import '../../services/background_timer_service.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -48,6 +49,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       try {
         await ref.read(treatmentPlanProvider.notifier).deleteTreatment();
         print('✅ Trattamento eliminato');
+        final bgTimer = BackgroundTimerService();
+        await bgTimer.initialize();
+        await bgTimer.clearAll();
+        print('✅ Timer azzerato');
       } catch (e) {
         print('⚠️ Trattamento già eliminato: $e');
       }
